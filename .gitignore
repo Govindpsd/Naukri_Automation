@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+logs/
+*.log
+.env
+resume_latest.pdf
+.pytest_cache/
+
