@@ -55,7 +55,7 @@ class Settings:
     # Application settings
     BASE_URL: str = "https://www.naukri.com"
     LOGIN_URL: str = "https://www.naukri.com/nlogin/login"
-    RESUME_TEMP_PATH: str = "resume_latest.pdf"
+    RESUME_TEMP_PATH: str = "Govind_Parshad_Resume.pdf"
     WAIT_TIME: int = get_int_env("WAIT_TIME", 15)
     HEADLESS: bool = get_bool_env("HEADLESS", False)
 

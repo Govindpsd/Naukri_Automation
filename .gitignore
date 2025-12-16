@@ -3,7 +3,7 @@ __pycache__/
 logs/
 *.log
 .env
-resume_latest.pdf
+Govind_Parshad_Resume.pdf
 cookies.json
 .pytest_cache/
 
