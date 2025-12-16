@@ -5,9 +5,11 @@ from selenium.common.exceptions import TimeoutException
 
 from config.settings import Settings
 from utils.google_drive import download_resume
+from utils.session_manager import load_cookies, save_cookies, is_logged_in
 from core.logger import logger
 
 import os
+import time
 
 
 # ------------------------------------------------------------
@@ -82,6 +84,115 @@ def click_login_button(driver):
     raise Exception("❌ Login button not found — Naukri UI changed.")
 
 
+# ------------------------------------------------------------
+# PERFORM LOGIN
+# ------------------------------------------------------------
+
+def perform_login(driver):
+    """Perform login with email and password."""
+    # Navigate directly to login page
+    logger.info(f"Navigating to login page: {Settings.LOGIN_URL}")
+    driver.get(Settings.LOGIN_URL)
+    
+    # Wait for page to load
+    wait_for(driver, By.TAG_NAME, "body", timeout=15)
+    close_chatbot_if_visible(driver)
+
+    # Try multiple selectors for email input
+    email_locators = [
+        (By.XPATH, "//input[@type='text' and contains(@placeholder, 'Email')]"),
+        (By.XPATH, "//input[@type='text' and contains(@placeholder, 'email')]"),
+        (By.XPATH, "//input[@type='email']"),
+        (By.XPATH, "//input[@name='email']"),
+        (By.XPATH, "//input[@id='usernameField']"),
+        (By.XPATH, "//input[contains(@class, 'email') or contains(@class, 'username')]"),
+    ]
+    
+    email_input = None
+    for by, locator in email_locators:
+        try:
+            logger.info(f"Trying email locator: {locator}")
+            email_input = wait_for(driver, by, locator, timeout=5)
+            if email_input:
+                logger.info(f"✓ Found email input with: {locator}")
+                break
+        except TimeoutException:
+            continue
+    
+    if not email_input:
+        raise Exception("❌ Could not find email input field on login page")
+    
+    email_input.clear()
+    email_input.send_keys(Settings.NAUKRI_EMAIL)
+    logger.info("✓ Email entered")
+
+    # Try multiple selectors for password input
+    password_locators = [
+        (By.XPATH, "//input[@type='password' and contains(@placeholder, 'password')]"),
+        (By.XPATH, "//input[@type='password' and contains(@placeholder, 'Password')]"),
+        (By.XPATH, "//input[@type='password']"),
+        (By.XPATH, "//input[@name='password']"),
+        (By.XPATH, "//input[@id='passwordField']"),
+    ]
+    
+    password_input = None
+    for by, locator in password_locators:
+        try:
+            logger.info(f"Trying password locator: {locator}")
+            password_input = wait_for(driver, by, locator, timeout=5)
+            if password_input:
+                logger.info(f"✓ Found password input with: {locator}")
+                break
+        except TimeoutException:
+            continue
+    
+    if not password_input:
+        raise Exception("❌ Could not find password input field on login page")
+    
+    password_input.clear()
+    password_input.send_keys(Settings.NAUKRI_PASSWORD)
+    logger.info("✓ Password entered")
+
+    # Try multiple selectors for login button
+    login_button_locators = [
+        (By.XPATH, "//button[contains(text(),'Login')]"),
+        (By.XPATH, "//button[@type='submit']"),
+        (By.XPATH, "//input[@type='submit']"),
+        (By.XPATH, "//button[contains(@class, 'login')]"),
+        (By.XPATH, "//button[contains(@class, 'submit')]"),
+    ]
+    
+    login_submit = None
+    for by, locator in login_button_locators:
+        try:
+            logger.info(f"Trying login button locator: {locator}")
+            login_submit = wait_clickable(driver, by, locator, timeout=5)
+            if login_submit:
+                logger.info(f"✓ Found login button with: {locator}")
+                break
+        except TimeoutException:
+            continue
+    
+    if not login_submit:
+        raise Exception("❌ Could not find login button on login page")
+    
+    login_submit.click()
+    logger.info("✓ Login button clicked")
+
+    # Wait for login to complete (check if we're redirected away from login page)
+    try:
+        WebDriverWait(driver, 15).until(
+            lambda d: "login" not in d.current_url.lower() or d.current_url == Settings.NAUKRI_PROFILE_URL
+        )
+    except TimeoutException:
+        logger.warning("Still on login page after clicking login - might need manual verification")
+
+    logger.info("🔐 Logged into Naukri.")
+    close_chatbot_if_visible(driver)
+    
+    # Save cookies after successful login
+    save_cookies(driver)
+
 
 # ------------------------------------------------------------
 # MAIN WORKFLOW
@@ -94,7 +205,7 @@ class UpdateResumeFlow:
         logger.info("🚀 Starting Naukri resume update automation")
 
         # ------------------------------------------------------------
-        # 1. DOWNLOAD RESUME FROM GOOGLE DRIVE
+        # 1. DOWNLOAD RESUME FROM GITHUB
         # ------------------------------------------------------------
         resume_path = download_resume()
 
@@ -104,77 +215,290 @@ class UpdateResumeFlow:
 
 
         # ------------------------------------------------------------
-        # 2. LOGIN
+        # 2. LOGIN (with cookie-based session management)
         # ------------------------------------------------------------
 
-        driver.get(Settings.BASE_URL)
-        close_chatbot_if_visible(driver)
-
-        click_login_button(driver)
-        close_chatbot_if_visible(driver)
-
-        # Email input
-        email_input = wait_for(
-            driver,
-            By.XPATH,
-            "//input[@type='text' and contains(@placeholder, 'Email')]"
-        )
-        email_input.send_keys(Settings.NAUKRI_EMAIL)
-
-        # Password input
-        password_input = wait_for(
-            driver,
-            By.XPATH,
-            "//input[@type='password' and contains(@placeholder, 'password')]"
-        )
-        password_input.send_keys(Settings.NAUKRI_PASSWORD)
-
-        # Login submit
-        login_submit = wait_clickable(
-            driver,
-            By.XPATH,
-            "//button[contains(text(),'Login')]"
-        )
-        login_submit.click()
-
-        logger.info("🔐 Logged into Naukri.")
-        close_chatbot_if_visible(driver)
+        # Try to load saved cookies first
+        logger.info("Attempting to load saved session cookies...")
+        cookies_loaded = load_cookies(driver)
+        
+        if cookies_loaded:
+            # Check if we're already logged in with the cookies
+            if is_logged_in(driver):
+                logger.info("✅ Successfully logged in using saved cookies (bypassed login form)")
+                close_chatbot_if_visible(driver)
+            else:
+                logger.info("Cookies loaded but session expired. Performing fresh login...")
+                perform_login(driver)
+        else:
+            logger.info("No saved cookies found. Performing fresh login...")
+            perform_login(driver)
 
 
         # ------------------------------------------------------------
         # 3. NAVIGATE TO PROFILE PAGE
         # ------------------------------------------------------------
+        logger.info(f"Navigating to profile page: {Settings.NAUKRI_PROFILE_URL}")
         driver.get(Settings.NAUKRI_PROFILE_URL)
 
-        wait_for(driver, By.TAG_NAME, "body", timeout=10)
+        # Wait for page to fully load
+        wait_for(driver, By.TAG_NAME, "body", timeout=15)
         close_chatbot_if_visible(driver)
+        
+        # Wait a bit more for dynamic content to load
+        time.sleep(3)
+        
+        # Scroll to resume section to ensure it's in view
+        try:
+            resume_section = driver.find_element(By.XPATH, "//*[contains(text(), 'Resume') or contains(@id, 'resume') or contains(@class, 'resume')]")
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", resume_section)
+            logger.info("✓ Scrolled to resume section")
+            time.sleep(2)
+        except:
+            logger.warning("Could not find resume section to scroll to - continuing anyway")
 
 
         # ------------------------------------------------------------
-        # 4. UPLOAD RESUME — via REAL hidden input attachCV
+        # 4. UPLOAD RESUME
         # ------------------------------------------------------------
 
         try:
-            logger.info("Looking for hidden upload input 'attachCV'...")
-
-            # 1. Locate the hidden <input type="file" id="attachCV">
-            upload_input = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "attachCV"))
-            )
-
-            logger.info("Found attachCV input field.")
-
-            # 2. Make hidden input visible so Selenium can interact
-            driver.execute_script("arguments[0].style.display = 'block';", upload_input)
-
-            # 3. Upload file using absolute path
+            logger.info("Looking for resume upload input field...")
+            
+            # Wait for the resume section to be visible
+            wait_for(driver, By.TAG_NAME, "body", timeout=10)
+            
+            # Try multiple strategies to find and interact with the file input
+            upload_input = None
+            
+            # Strategy 1: Look for attachCV by ID (most common)
+            file_input_locators = [
+                (By.ID, "attachCV"),
+                (By.NAME, "attachCV"),
+                (By.XPATH, "//input[@type='file' and @id='attachCV']"),
+                (By.XPATH, "//input[@type='file' and @name='attachCV']"),
+                (By.XPATH, "//input[@type='file' and contains(@class, 'attachCV')]"),
+                (By.XPATH, "//input[@type='file']"),
+            ]
+            
+            for by, locator in file_input_locators:
+                try:
+                    logger.info(f"Trying file input locator: {locator}")
+                    upload_input = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((by, locator))
+                    )
+                    if upload_input:
+                        logger.info(f"✓ Found file input with: {locator}")
+                        break
+                except TimeoutException:
+                    continue
+            
+            if not upload_input:
+                # Strategy 2: Try clicking the "Update resume" button first to trigger file input
+                logger.info("File input not found directly. Trying to click 'Update resume' button...")
+                update_button_locators = [
+                    (By.XPATH, "//input[@type='button' and @value='Update resume']"),
+                    (By.XPATH, "//button[contains(text(), 'Update resume')]"),
+                    (By.XPATH, "//input[contains(@class, 'dummyUpload')]"),
+                    (By.XPATH, "//button[contains(@class, 'dummyUpload')]"),
+                    (By.XPATH, "//*[contains(text(), 'Update resume')]"),
+                ]
+                
+                update_button = None
+                for by, locator in update_button_locators:
+                    try:
+                        update_button = wait_clickable(driver, by, locator, timeout=5)
+                        if update_button:
+                            logger.info(f"✓ Found update button with: {locator}")
+                            # Click the button to trigger file input
+                            update_button.click()
+                            logger.info("✓ Clicked update button")
+                            # Wait a bit for file input to appear
+                            time.sleep(2)
+                            break
+                    except TimeoutException:
+                        continue
+                
+                # Now try to find the file input again after clicking
+                for by, locator in file_input_locators:
+                    try:
+                        upload_input = WebDriverWait(driver, 5).until(
+                            EC.presence_of_element_located((by, locator))
+                        )
+                        if upload_input:
+                            logger.info(f"✓ Found file input after clicking button: {locator}")
+                            break
+                    except TimeoutException:
+                        continue
+            
+            if not upload_input:
+                raise Exception("❌ Could not find file upload input field. Naukri UI may have changed.")
+            
+            # Make sure the input is visible and interactable
+            try:
+                # Remove any display:none or visibility:hidden styles
+                driver.execute_script("""
+                    arguments[0].style.display = 'block';
+                    arguments[0].style.visibility = 'visible';
+                    arguments[0].style.opacity = '1';
+                    arguments[0].style.position = 'static';
+                    arguments[0].style.height = 'auto';
+                    arguments[0].style.width = 'auto';
+                """, upload_input)
+            except Exception as e:
+                logger.warning(f"Could not modify input styles: {e}")
+            
+            # Upload the file
             logger.info(f"Uploading resume from: {resume_path}")
+            
+            # First, ensure the file input is ready
+            try:
+                # Trigger focus event
+                driver.execute_script("arguments[0].focus();", upload_input)
+                time.sleep(0.5)
+            except:
+                pass
+            
+            # Send the file path
             upload_input.send_keys(resume_path)
-
-            logger.info("✅ Resume uploaded successfully!")
+            logger.info("✓ File path sent to input field")
+            
+            # Trigger change event (often required for file uploads to work)
+            try:
+                driver.execute_script("""
+                    var input = arguments[0];
+                    var event = new Event('change', { bubbles: true });
+                    input.dispatchEvent(event);
+                """, upload_input)
+                logger.info("✓ Triggered change event on file input")
+            except Exception as e:
+                logger.warning(f"Could not trigger change event: {e}")
+            
+            # Wait a moment for the file selection to register
+            time.sleep(2)
+            
+            # Verify file was actually selected
+            try:
+                file_value = upload_input.get_attribute('value')
+                if file_value:
+                    logger.info(f"✓ File input value confirmed: {file_value}")
+                else:
+                    logger.warning("⚠ File input value is empty - file may not have been selected")
+            except Exception as e:
+                logger.warning(f"Could not verify file input value: {e}")
+            
+            # Check for upload progress indicators or submit buttons
+            logger.info("Checking for upload progress or submit buttons...")
+            
+            # Look for submit/confirm/save buttons that might appear after file selection
+            submit_button_locators = [
+                (By.XPATH, "//button[contains(text(), 'Submit')]"),
+                (By.XPATH, "//button[contains(text(), 'Save')]"),
+                (By.XPATH, "//button[contains(text(), 'Upload')]"),
+                (By.XPATH, "//button[contains(text(), 'Confirm')]"),
+                (By.XPATH, "//input[@type='submit']"),
+                (By.XPATH, "//button[@type='submit']"),
+            ]
+            
+            submit_button = None
+            for by, locator in submit_button_locators:
+                try:
+                    submit_button = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((by, locator))
+                    )
+                    if submit_button:
+                        logger.info(f"✓ Found submit button: {locator}")
+                        submit_button.click()
+                        logger.info("✓ Clicked submit button")
+                        time.sleep(2)
+                        break
+                except TimeoutException:
+                    continue
+            
+            # Wait for upload to complete - look for multiple success indicators
+            logger.info("Waiting for upload to complete...")
+            upload_success = False
+            
+            # Wait up to 45 seconds for upload completion
+            for attempt in range(15):  # Check every 3 seconds for 45 seconds total
+                time.sleep(3)
+                
+                # Check 1: Look for success messages
+                try:
+                    success_indicators = driver.find_elements(By.XPATH, 
+                        "//*[contains(text(), 'successfully') or contains(text(), 'uploaded') or contains(text(), 'updated')]"
+                    )
+                    if success_indicators:
+                        logger.info("✓ Found success message on page")
+                        upload_success = True
+                        break
+                except:
+                    pass
+                
+                # Check 2: Look for error messages
+                try:
+                    error_indicators = driver.find_elements(By.XPATH,
+                        "//*[contains(text(), 'error') or contains(text(), 'failed') or contains(text(), 'invalid')]"
+                    )
+                    if error_indicators:
+                        error_text = error_indicators[0].text
+                        logger.warning(f"⚠ Found potential error message: {error_text}")
+                except:
+                    pass
+                
+                # Check 3: Look for upload progress indicators disappearing
+                try:
+                    progress_bars = driver.find_elements(By.XPATH, "//*[contains(@class, 'progress') or contains(@class, 'loading')]")
+                    if not progress_bars:
+                        # No progress bars might mean upload is done
+                        logger.info("✓ Upload progress indicators disappeared")
+                    else:
+                        logger.info(f"Upload in progress... (attempt {attempt + 1}/15)")
+                except:
+                    pass
+                
+                # Check 4: Verify file name appears on page (most reliable)
+                file_name = os.path.basename(resume_path)
+                try:
+                    # Look for the file name in various places
+                    file_elements = driver.find_elements(By.XPATH, 
+                        f"//*[contains(text(), '{file_name}') or contains(text(), '{file_name.replace('.pdf', '')}')]"
+                    )
+                    if file_elements:
+                        logger.info(f"✓ Verified: File name appears on page")
+                        upload_success = True
+                        break
+                except:
+                    pass
+                
+                # Check 5: Page URL change or reload
+                current_url = driver.current_url
+                if "profile" in current_url.lower():
+                    logger.info("Still on profile page, upload may be processing...")
+            
+            if upload_success:
+                logger.info("✅ Resume upload verified successfully!")
+            else:
+                logger.warning("⚠ Upload completion could not be verified. Please check manually.")
+                # Take a screenshot for debugging
+                try:
+                    screenshot_path = "upload_verification_screenshot.png"
+                    driver.save_screenshot(screenshot_path)
+                    logger.info(f"Screenshot saved to: {screenshot_path}")
+                except:
+                    pass
+            
+            logger.info("✅ Resume upload process completed!")
 
         except Exception as e:
             logger.error(f"❌ Could not upload resume: {e}")
+            # Take a screenshot for debugging
+            try:
+                screenshot_path = "upload_error_screenshot.png"
+                driver.save_screenshot(screenshot_path)
+                logger.info(f"Screenshot saved to: {screenshot_path}")
+            except:
+                pass
             raise
 
 

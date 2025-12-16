@@ -4,5 +4,6 @@ logs/
 *.log
 .env
 resume_latest.pdf
+cookies.json
 .pytest_cache/
 
