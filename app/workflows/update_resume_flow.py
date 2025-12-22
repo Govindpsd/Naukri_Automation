@@ -2,6 +2,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchElementException
 
 from config.settings import Settings
 from utils.google_drive import download_resume
@@ -26,6 +27,120 @@ def wait_clickable(driver, by, value, timeout=12):
         EC.element_to_be_clickable((by, value))
     )
 
+
+# Search for file input across main document and inside iframes
+def find_file_input(driver, locators, per_locator_timeout=5):
+    # Try the provided locators in the main document first
+    for by, locator in locators:
+        try:
+            logger.info(f"Trying file input locator: {locator}")
+            elem = WebDriverWait(driver, per_locator_timeout).until(
+                EC.presence_of_element_located((by, locator))
+            )
+            if elem:
+                return elem, None
+        except TimeoutException:
+            continue
+
+    # Try a generic querySelector in main document
+    try:
+        elem = driver.execute_script("return document.querySelector('input[type=file]');")
+        if elem:
+            logger.info("✓ Found file input via querySelector in main document")
+            return elem, None
+    except Exception:
+        pass
+
+    # Search inside iframes
+    iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+    for idx, iframe in enumerate(iframes):
+        try:
+            logger.info(f"Searching for file input inside iframe[{idx}]")
+            driver.switch_to.frame(iframe)
+
+            for by, locator in locators:
+                try:
+                    logger.info(f"Trying file input locator in iframe[{idx}]: {locator}")
+                    elem = WebDriverWait(driver, per_locator_timeout).until(
+                        EC.presence_of_element_located((by, locator))
+                    )
+                    if elem:
+                        return elem, iframe
+                except TimeoutException:
+                    continue
+
+            try:
+                elem = driver.execute_script("return document.querySelector('input[type=file]');")
+                if elem:
+                    logger.info(f"✓ Found file input via querySelector in iframe[{idx}]")
+                    return elem, iframe
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.warning(f"Could not inspect iframe[{idx}]: {e}")
+        finally:
+            driver.switch_to.default_content()
+
+    return None, None
+
+
+# Fallback: deep JS search to find input[type=file] across document, shadow roots and iframes
+def find_file_input_js(driver):
+    js = r"""
+    function findInNode(node){
+        if(!node) return null;
+        try{
+            // Direct match
+            var inputs = node.querySelectorAll('input[type=file]');
+            if(inputs && inputs.length) return inputs[0];
+        }catch(e){}
+
+        // shadow root search
+        try{
+            if(node.shadowRoot){
+                var s = node.shadowRoot.querySelectorAll('input[type=file]');
+                if(s && s.length) return s[0];
+            }
+        }catch(e){}
+
+        // traverse children
+        try{
+            var children = node.children || [];
+            for(var i=0;i<children.length;i++){
+                var found = findInNode(children[i]);
+                if(found) return found;
+            }
+        }catch(e){}
+
+        return null;
+    }
+
+    // Try main document
+    var found = findInNode(document);
+    if(found) return found;
+
+    // Try iframes (same-origin only)
+    var iframes = document.getElementsByTagName('iframe');
+    for(var i=0;i<iframes.length;i++){
+        try{
+            var doc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+            var f = findInNode(doc);
+            if(f) return f;
+        }catch(e){
+            // cross-origin or access denied
+            continue;
+        }
+    }
+
+    return null;
+    """
+
+    try:
+        elem = driver.execute_script(js)
+        return elem
+    except Exception:
+        return None
 
 # ------------------------------------------------------------
 # CLOSE CHATBOT IF VISIBLE
@@ -270,40 +385,32 @@ class UpdateResumeFlow:
             
             # Try multiple strategies to find and interact with the file input
             upload_input = None
-            
+            iframe_ctx = None
+
             # Strategy 1: Look for attachCV by ID (most common)
             file_input_locators = [
                 (By.ID, "attachCV"),
                 (By.NAME, "attachCV"),
                 (By.XPATH, "//input[@type='file' and @id='attachCV']"),
                 (By.XPATH, "//input[@type='file' and @name='attachCV']"),
-                (By.XPATH, "//input[@type='file' and contains(@class, 'attachCV')]"),
+                (By.XPATH, "//input[@type='file' and contains(@class, 'attachCV')]") ,
                 (By.XPATH, "//input[@type='file']"),
             ]
-            
-            for by, locator in file_input_locators:
-                try:
-                    logger.info(f"Trying file input locator: {locator}")
-                    upload_input = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((by, locator))
-                    )
-                    if upload_input:
-                        logger.info(f"✓ Found file input with: {locator}")
-                        break
-                except TimeoutException:
-                    continue
-            
+
+            # Use iframe-aware finder helper
+            upload_input, iframe_ctx = find_file_input(driver, file_input_locators, per_locator_timeout=5)
+
             if not upload_input:
                 # Strategy 2: Try clicking the "Update resume" button first to trigger file input
                 logger.info("File input not found directly. Trying to click 'Update resume' button...")
                 update_button_locators = [
                     (By.XPATH, "//input[@type='button' and @value='Update resume']"),
-                    (By.XPATH, "//button[contains(text(), 'Update resume')]"),
-                    (By.XPATH, "//input[contains(@class, 'dummyUpload')]"),
-                    (By.XPATH, "//button[contains(@class, 'dummyUpload')]"),
-                    (By.XPATH, "//*[contains(text(), 'Update resume')]"),
+                    (By.XPATH, "//button[contains(text(), 'Update resume')]") ,
+                    (By.XPATH, "//input[contains(@class, 'dummyUpload')]") ,
+                    (By.XPATH, "//button[contains(@class, 'dummyUpload')]") ,
+                    (By.XPATH, "//*[contains(text(), 'Update resume')]") ,
                 ]
-                
+
                 update_button = None
                 for by, locator in update_button_locators:
                     try:
@@ -311,29 +418,45 @@ class UpdateResumeFlow:
                         if update_button:
                             logger.info(f"✓ Found update button with: {locator}")
                             # Click the button to trigger file input
-                            update_button.click()
+                            try:
+                                update_button.click()
+                            except Exception:
+                                driver.execute_script("arguments[0].click();", update_button)
                             logger.info("✓ Clicked update button")
                             # Wait a bit for file input to appear
                             time.sleep(2)
                             break
                     except TimeoutException:
                         continue
-                
-                # Now try to find the file input again after clicking
-                for by, locator in file_input_locators:
-                    try:
-                        upload_input = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((by, locator))
-                        )
-                        if upload_input:
-                            logger.info(f"✓ Found file input after clicking button: {locator}")
-                            break
-                    except TimeoutException:
-                        continue
-            
+
+                # Try finding file input again after clicking the button
+                upload_input, iframe_ctx = find_file_input(driver, file_input_locators, per_locator_timeout=5)
+
+            if not upload_input:
+                # Try deep JS-based search (shadow DOM / iframes)
+                logger.info("Attempting deep JS search for file input (shadow DOM / iframes)...")
+                try:
+                    js_elem = find_file_input_js(driver)
+                    if js_elem:
+                        upload_input = js_elem
+                        iframe_ctx = None
+                        logger.info("✓ Found file input via JS fallback")
+                except Exception:
+                    pass
+
             if not upload_input:
                 raise Exception("❌ Could not find file upload input field. Naukri UI may have changed.")
             
+            # If the input was found inside an iframe, switch into that frame
+            switched_to_frame = False
+            if iframe_ctx:
+                try:
+                    driver.switch_to.frame(iframe_ctx)
+                    switched_to_frame = True
+                    logger.info("Switched into iframe context to interact with file input")
+                except Exception as e:
+                    logger.warning(f"Could not switch to iframe context: {e}")
+
             # Make sure the input is visible and interactable
             try:
                 # Remove any display:none or visibility:hidden styles
@@ -347,18 +470,18 @@ class UpdateResumeFlow:
                 """, upload_input)
             except Exception as e:
                 logger.warning(f"Could not modify input styles: {e}")
-            
+
             # Upload the file
             logger.info(f"Uploading resume from: {resume_path}")
-            
+
             # First, ensure the file input is ready
             try:
                 # Trigger focus event
                 driver.execute_script("arguments[0].focus();", upload_input)
                 time.sleep(0.5)
-            except:
+            except Exception:
                 pass
-            
+
             # Send the file path
             upload_input.send_keys(resume_path)
             logger.info("✓ File path sent to input field")
@@ -376,6 +499,14 @@ class UpdateResumeFlow:
             
             # Wait a moment for the file selection to register
             time.sleep(2)
+
+            # If we had switched into an iframe to interact with the input, switch back now
+            if switched_to_frame:
+                try:
+                    driver.switch_to.default_content()
+                    logger.info("Switched back to default content after interacting with iframe")
+                except Exception:
+                    pass
             
             # Verify file was actually selected
             try:
