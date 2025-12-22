@@ -1,6 +1,4 @@
-FROM --platform=linux/amd64 selenium/standalone-chrome:latest
-
-USER root
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -12,4 +10,4 @@ COPY app /app
 ENV PYTHONUNBUFFERED=1
 ENV HEADLESS=True
 
-ENTRYPOINT ["python", "main.py"]
+CMD ["python", "main.py"]

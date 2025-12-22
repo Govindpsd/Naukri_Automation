@@ -1,0 +1,18 @@
+services:
+  selenium:
+    image: selenium/standalone-chrome:latest
+    platform: linux/amd64
+    shm_size: 2gb
+
+  app:
+    build: .
+    platform: linux/amd64
+    depends_on:
+      - selenium
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./cookies.json:/app/cookies.json
+
+
