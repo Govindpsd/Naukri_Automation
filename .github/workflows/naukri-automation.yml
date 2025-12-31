@@ -1,0 +1,40 @@
+name: Naukri Automation
+
+on:
+  workflow_dispatch:   # manual trigger (for testing)
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare files
+        run: |
+          mkdir -p logs
+          touch cookies.json
+
+      - name: Start containers
+        env:
+          NAUKRI_EMAIL: ${{ secrets.NAUKRI_EMAIL }}
+          NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
+          NAUKRI_PROFILE_URL: ${{ vars.NAUKRI_PROFILE_URL }}
+          GITHUB_RESUME_URL: ${{ vars.GITHUB_RESUME_URL }}
+        run: |
+          docker compose up --build -d
+          sleep 20
+
+      - name: Run automation
+        env:
+          NAUKRI_EMAIL: ${{ secrets.NAUKRI_EMAIL }}
+          NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
+          NAUKRI_PROFILE_URL: ${{ vars.NAUKRI_PROFILE_URL }}
+          GITHUB_RESUME_URL: ${{ vars.GITHUB_RESUME_URL }}
+        run: docker compose exec -T app python main.py
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down
+

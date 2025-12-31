@@ -9,8 +9,11 @@ services:
     platform: linux/amd64
     depends_on:
       - selenium
-    env_file:
-      - .env
+    environment:
+      - NAUKRI_EMAIL=${NAUKRI_EMAIL}
+      - NAUKRI_PASSWORD=${NAUKRI_PASSWORD}
+      - NAUKRI_PROFILE_URL=${NAUKRI_PROFILE_URL}
+      - GITHUB_RESUME_URL=${GITHUB_RESUME_URL}
     volumes:
       - ./logs:/app/logs
       - ./cookies.json:/app/cookies.json
