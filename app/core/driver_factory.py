@@ -35,10 +35,21 @@ class DriverFactory:
 
         # Essential flags for containerized environments (minimal set)
         # Using minimal flags to avoid compatibility issues with Selenium Grid
+        # Memory-efficient settings to prevent OOM (exit code 137)
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-gpu")
+        # Reduced window size to save memory
+        options.add_argument("--window-size=1280,720")
+        # Memory-saving flags
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-features=TranslateUI,BlinkGenPropertyTrees")
 
         # Try to create driver with retries
         max_retries = 3

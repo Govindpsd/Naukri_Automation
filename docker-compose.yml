@@ -9,8 +9,8 @@ services:
       - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_SESSION_REQUEST_TIMEOUT=300
       - SE_NODE_SESSION_TIMEOUT=300
-      - SE_SCREEN_WIDTH=1920
-      - SE_SCREEN_HEIGHT=1080
+      - SE_SCREEN_WIDTH=1280
+      - SE_SCREEN_HEIGHT=720
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 5s
