@@ -33,18 +33,34 @@ jobs:
           docker compose up --build -d
 
           echo "Waiting for Selenium to be ready..."
-          max_attempts=12
+          max_attempts=24
           attempt=0
           while [ $attempt -lt $max_attempts ]; do
+            # Check if container is running
+            if ! docker compose ps selenium | grep -q "Up"; then
+              echo "Selenium container is not running"
+              docker compose logs selenium
+              exit 1
+            fi
+            
+            # Check if Selenium is responding
             if curl -sf http://localhost:4444/wd/hub/status > /dev/null 2>&1; then
               echo "Selenium is ready!"
+              curl -s http://localhost:4444/wd/hub/status | head -20
               exit 0
             fi
+            
             attempt=$((attempt + 1))
             echo "Waiting for Selenium... (attempt $attempt/$max_attempts)"
+            if [ $((attempt % 3)) -eq 0 ]; then
+              echo "Checking Selenium logs..."
+              docker compose logs --tail=10 selenium
+            fi
             sleep 5
           done
           echo "Selenium did not become ready in time"
+          echo "Final Selenium logs:"
+          docker compose logs selenium
           exit 1
 
       - name: Run automation

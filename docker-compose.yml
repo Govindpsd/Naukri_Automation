@@ -2,6 +2,8 @@ services:
   selenium:
     image: selenium/standalone-chrome:latest
     shm_size: 2gb
+    ports:
+      - "4444:4444"
     environment:
       - SE_NODE_MAX_SESSIONS=1
       - SE_NODE_OVERRIDE_MAX_SESSIONS=true
