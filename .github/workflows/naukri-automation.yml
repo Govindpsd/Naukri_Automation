@@ -24,11 +24,12 @@ jobs:
           GITHUB_RESUME_URL: ${{ vars.RESUME_URL }}
         run: |
           docker compose up --build -d
-          until curl -s http://localhost:4444/status | grep -q '"ready":true'; do
-          echo "Waiting for Selenium..."
-          sleep 5
+
+          echo "Waiting for Selenium to be ready..."
+          until docker compose exec -T app \ 
+            curl -s http://selenium:4444/status | grep -q '"ready":true'; do
+            sleep 5
           done
-          echo "Selenium is ready!"
 
       - name: Run automation
         env:
