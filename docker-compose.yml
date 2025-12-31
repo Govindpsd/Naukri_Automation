@@ -8,11 +8,21 @@ services:
       - SE_NODE_MAX_SESSIONS=1
       - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_SESSION_REQUEST_TIMEOUT=300
+      - SE_NODE_SESSION_TIMEOUT=300
+      - SE_SCREEN_WIDTH=1920
+      - SE_SCREEN_HEIGHT=1080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
 
   app:
     build: .
     depends_on:
-      - selenium
+      selenium:
+        condition: service_healthy
     environment:
       - NAUKRI_EMAIL=${NAUKRI_EMAIL}
       - NAUKRI_PASSWORD=${NAUKRI_PASSWORD}
