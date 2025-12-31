@@ -39,9 +39,9 @@ jobs:
         run: docker compose exec -T app python main.py
       
       - name: Selenium Logs
-        if:failure()
+        if: failure()
         run: docker compose logs selenium
-        
+
       - name: Stop containers
         if: always()
         run: docker compose down
