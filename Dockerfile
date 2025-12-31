@@ -2,12 +2,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app /app
+# Copy the entire project
+COPY . .
 
-ENV PYTHONUNBUFFERED=1
-ENV HEADLESS=True
+# Set PYTHONPATH to include the app directory
+ENV PYTHONPATH=/app
 
-CMD ["python", "main.py"]
+CMD ["python", "app/main.py"]

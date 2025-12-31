@@ -1,17 +1,24 @@
 name: Naukri Automation
 
 on:
-  workflow_dispatch:   # manual trigger (for testing)
+  workflow_dispatch:     # manual trigger (for testing)
+  schedule:
+    # 9:00 AM IST = 3:30 AM UTC
+    - cron: "30 3 * * *"
+  push:
+    paths:
+      - "resume.pdf"
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare files
+      - name: Prepare runtime files
         run: |
           mkdir -p logs
           touch cookies.json
@@ -26,10 +33,19 @@ jobs:
           docker compose up --build -d
 
           echo "Waiting for Selenium to be ready..."
-          until docker compose exec -T app \ 
-            curl -s http://selenium:4444/status | grep -q '"ready":true'; do
+          max_attempts=12
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -sf http://localhost:4444/wd/hub/status > /dev/null 2>&1; then
+              echo "Selenium is ready!"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            echo "Waiting for Selenium... (attempt $attempt/$max_attempts)"
             sleep 5
           done
+          echo "Selenium did not become ready in time"
+          exit 1
 
       - name: Run automation
         env:
@@ -37,13 +53,15 @@ jobs:
           NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
           NAUKRI_PROFILE_URL: ${{ vars.NAUKRI_PROFILE_URL }}
           GITHUB_RESUME_URL: ${{ vars.RESUME_URL }}
-        run: docker compose exec -T app python main.py
-      
-      - name: Selenium Logs
-        if: failure()
-        run: docker compose logs selenium
+        run: docker compose exec -T app python app/main.py
 
-      - name: Stop containers
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naukri-automation-logs
+          path: logs/
+
+      - name: Shutdown containers
         if: always()
         run: docker compose down
-
