@@ -24,16 +24,24 @@ jobs:
           GITHUB_RESUME_URL: ${{ vars.RESUME_URL }}
         run: |
           docker compose up --build -d
-          sleep 20
+          until curl -s http://localhost:4444/status | grep -q '"ready":true'; do
+          echo "Waiting for Selenium..."
+          sleep 5
+          done
+          echo "Selenium is ready!"
 
       - name: Run automation
         env:
           NAUKRI_EMAIL: ${{ secrets.NAUKRI_EMAIL }}
           NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
           NAUKRI_PROFILE_URL: ${{ vars.NAUKRI_PROFILE_URL }}
-          GITHUB_RESUME_URL: ${{ vars.GITHUB_RESUME_URL }}
+          GITHUB_RESUME_URL: ${{ vars.RESUME_URL }}
         run: docker compose exec -T app python main.py
-
+      
+      - name: Selenium Logs
+        if:failure()
+        run: docker compose logs selenium
+        
       - name: Stop containers
         if: always()
         run: docker compose down
