@@ -22,8 +22,9 @@ class DriverFactory:
                     status = response.json()
                     if status.get("value", {}).get("ready", False):
                         logger.info("✓ Selenium Grid is ready")
-                        # Give Selenium a moment to fully initialize
-                        time.sleep(2)
+                        # Give Selenium more time to fully initialize and free up memory
+                        logger.info("Waiting 5 seconds for Selenium to stabilize...")
+                        time.sleep(5)
                         break
             except Exception as e:
                 logger.debug(f"Selenium not ready yet: {e}")

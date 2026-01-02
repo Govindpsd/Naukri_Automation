@@ -63,6 +63,16 @@ jobs:
           docker compose logs selenium
           exit 1
 
+      - name: Check available memory
+        run: |
+          echo "Available memory before running automation:"
+          free -h
+          echo "Docker container memory usage:"
+          docker stats --no-stream --format "table {{.Container}}\t{{.MemUsage}}\t{{.MemPerc}}" || true
+          # Free up memory by clearing caches
+          sync
+          echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null || true
+
       - name: Run automation
         env:
           NAUKRI_EMAIL: ${{ secrets.NAUKRI_EMAIL }}

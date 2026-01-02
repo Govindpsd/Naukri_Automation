@@ -1,8 +1,9 @@
 services:
   selenium:
-    image: selenium/standalone-chrome:latest
+    # Use a specific stable version for better memory management
+    image: selenium/standalone-chrome:4.15.0
     # Reduced shared memory to save memory
-    shm_size: 512mb
+    shm_size: 256mb
     ports:
       - "4444:4444"
     environment:
