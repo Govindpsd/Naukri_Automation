@@ -1,7 +1,8 @@
 services:
   selenium:
     image: selenium/standalone-chrome:latest
-    shm_size: 2gb
+    # Reduced shared memory to save memory
+    shm_size: 512mb
     ports:
       - "4444:4444"
     environment:
@@ -9,8 +10,12 @@ services:
       - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_SESSION_REQUEST_TIMEOUT=300
       - SE_NODE_SESSION_TIMEOUT=300
-      - SE_SCREEN_WIDTH=1280
-      - SE_SCREEN_HEIGHT=720
+      # Minimal screen size to reduce memory usage
+      - SE_SCREEN_WIDTH=1024
+      - SE_SCREEN_HEIGHT=768
+      # Memory optimization flags
+      - SE_VNC_NO_PASSWORD=1
+      - SE_NODE_GRID_URL=http://localhost:4444
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 5s

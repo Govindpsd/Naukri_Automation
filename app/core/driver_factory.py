@@ -35,21 +35,47 @@ class DriverFactory:
 
         # Essential flags for containerized environments (minimal set)
         # Using minimal flags to avoid compatibility issues with Selenium Grid
-        # Memory-efficient settings to prevent OOM (exit code 137)
+        # Aggressive memory-efficient settings to prevent OOM (exit code 137)
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        # Reduced window size to save memory
-        options.add_argument("--window-size=1280,720")
-        # Memory-saving flags
+        # Minimal window size to save memory
+        options.add_argument("--window-size=1024,768")
+        # Aggressive memory-saving flags
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-software-rasterizer")
         options.add_argument("--disable-background-networking")
         options.add_argument("--disable-background-timer-throttling")
         options.add_argument("--disable-backgrounding-occluded-windows")
         options.add_argument("--disable-renderer-backgrounding")
-        options.add_argument("--disable-features=TranslateUI,BlinkGenPropertyTrees")
+        options.add_argument("--disable-features=TranslateUI,BlinkGenPropertyTrees,VizDisplayCompositor")
+        # Additional memory optimizations
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--disable-prompt-on-repost")
+        options.add_argument("--disable-domain-reliability")
+        options.add_argument("--disable-component-update")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-breakpad")
+        options.add_argument("--disable-client-side-phishing-detection")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-prompt-on-repost")
+        options.add_argument("--disable-translate")
+        options.add_argument("--metrics-recording-only")
+        options.add_argument("--mute-audio")
+        # Limit renderer process count
+        options.add_argument("--renderer-process-limit=1")
+        # Disable image loading to save memory
+        prefs = {
+            "profile.managed_default_content_settings.images": 2,  # Block images
+            "profile.default_content_setting_values": {
+                "notifications": 2,
+                "geolocation": 2,
+            }
+        }
+        options.add_experimental_option("prefs", prefs)
 
         # Try to create driver with retries
         max_retries = 3
